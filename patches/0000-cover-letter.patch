@@ -1,28 +1,22 @@
-From a318a126e9e4d6e1a10711c3ad86dd866b0db082 Mon Sep 17 00:00:00 2001
+From b16c109f90efe9cbd1558376ee10dce54d403ebe Mon Sep 17 00:00:00 2001
 From: Igor-rk3588 <297247175+sky-rk3588@users.noreply.github.com>
-Date: Wed, 8 Jul 2026 01:17:22 +0200
+Date: Wed, 8 Jul 2026 01:18:08 +0200
 Subject: [PATCH 0/2] media: synopsys: hdmirx: add HDMI RX audio capture
 
 Adds HDMI-input audio capture to the mainline synopsys-hdmirx driver
 (RK3588). Registers the generic hdmi-codec so a simple-audio-card binds
-the HDMI RX audio DAI; recovers fs from ACR N/CTS; a periodic worker
-locks the audio clock to the source to avoid FIFO drift. Tested on an
-Orange Pi 5 Plus.
+the HDMI RX audio DAI; recovers the sample rate from ACR N/CTS; a periodic
+worker locks the audio clock to the source to avoid FIFO drift and dropped
+samples. Tested on an Orange Pi 5 Plus capturing 44.1/48 kHz stereo.
 
-sky (2):
+Igor-rk3588 (2):
   dt-bindings: media: snps,dw-hdmi-rx: add #sound-dai-cells
   media: synopsys: hdmirx: add HDMI audio capture support
 
  .../bindings/media/snps,dw-hdmi-rx.yaml       |   7 +
- .../platform/synopsys/hdmirx/snps_hdmirx.c    | 244 ++++++++++++
+ .../platform/synopsys/hdmirx/snps_hdmirx.c    | 244 ++++++++++++++++++
  .../platform/synopsys/hdmirx/snps_hdmirx.h    |   8 +
- patches/0000-cover-letter.patch               |  36 ++
- ...a-snps-dw-hdmi-rx-add-sound-dai-cell.patch |  35 ++
- ...dmirx-add-HDMI-audio-capture-support.patch | 348 ++++++++++++++++++
- 6 files changed, 678 insertions(+)
- create mode 100644 patches/0000-cover-letter.patch
- create mode 100644 patches/0001-dt-bindings-media-snps-dw-hdmi-rx-add-sound-dai-cell.patch
- create mode 100644 patches/0002-media-synopsys-hdmirx-add-HDMI-audio-capture-support.patch
+ 3 files changed, 259 insertions(+)
 
 -- 
 2.53.0

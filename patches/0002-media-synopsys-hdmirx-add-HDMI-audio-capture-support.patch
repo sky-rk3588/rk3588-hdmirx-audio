@@ -1,6 +1,6 @@
-From a318a126e9e4d6e1a10711c3ad86dd866b0db082 Mon Sep 17 00:00:00 2001
-From: sky <royalnet026@gmail.com>
-Date: Wed, 8 Jul 2026 01:16:46 +0200
+From b16c109f90efe9cbd1558376ee10dce54d403ebe Mon Sep 17 00:00:00 2001
+From: Igor-rk3588 <297247175+sky-rk3588@users.noreply.github.com>
+Date: Wed, 8 Jul 2026 01:18:08 +0200
 Subject: [PATCH 2/2] media: synopsys: hdmirx: add HDMI audio capture support
 
 The Synopsys DesignWare HDMI RX controller extracts the audio stream
