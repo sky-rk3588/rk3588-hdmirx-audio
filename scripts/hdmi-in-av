@@ -1,12 +1,22 @@
 #!/usr/bin/env bash
-# HDMI IN video + AUDIO uzivo. Zvuk = ALSA po imenu. Leaky queue protiv spam gresaka.
-# Napomena: povremeni audio glitch = clock drift (fix = M3b drift tracking u drajveru).
+# HDMI IN video + AUDIO uzivo, sa izborom izlaza zvuka:
+#   hdmi-in-av        -> zvuk na SLUSALICE / analog (3.5mm)
+#   hdmi-in-av mon    -> zvuk na MONITOR (HDMI0)
+#   hdmi-in-av mon1   -> zvuk na drugi HDMI izlaz (HDMI1)
+# Border ostaje (gtkwaylandsink). Zvuk = ALSA kartica po imenu (rockchiphdmiin).
 set -euo pipefail
 DEV=/dev/video5
 ACARD="hw:CARD=rockchiphdmiin"
+
+case "${1:-}" in
+  mon)  ASINK="alsa_output.platform-hdmi0-sound.stereo-fallback"; echo "zvuk -> MONITOR (HDMI0)";;
+  mon1) ASINK="alsa_output.platform-hdmi1-sound.stereo-fallback"; echo "zvuk -> HDMI1";;
+  *)    ASINK="alsa_output.platform-sound.stereo-fallback";       echo "zvuk -> slusalice / analog (3.5mm)";;
+esac
+
 v4l2-ctl -d "$DEV" --set-dv-bt-timings query >/dev/null 2>&1 || true
 exec gst-launch-1.0 \
-  v4l2src device="$DEV" io-mode=dmabuf ! queue ! gtkwaylandsink sync=false \
+  v4l2src device="$DEV" io-mode=dmabuf ! queue max-size-buffers=3 leaky=downstream ! gtkwaylandsink sync=false \
   alsasrc device="$ACARD" buffer-time=80000 ! \
     queue max-size-time=0 max-size-bytes=0 max-size-buffers=0 leaky=downstream ! \
-    audioconvert ! audioresample ! autoaudiosink sync=false
+    audioconvert ! audioresample ! pulsesink device="$ASINK" sync=false
