@@ -9,6 +9,9 @@ The mainline driver captures HDMI-input **video** only — audio is a known
 path: the audio embedded in the incoming HDMI stream shows up as a normal
 ALSA capture device and can be recorded or played live alongside the video.
 
+> **Full write-up:** [docs/hdmi-in-complete-guide.md](docs/hdmi-in-complete-guide.md)
+> — the complete HDMI IN story (video + audio), build, deploy, and gotchas.
+
 ## What works
 
 - HDMI IN video (1080p60, up to 4K per the RX)
