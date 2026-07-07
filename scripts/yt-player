@@ -33,7 +33,8 @@ V = urls[0]; A = urls[1] if len(urls) > 1 else None
 
 QBUF = "queue2 use-buffering=true max-size-time=80000000000 max-size-bytes=0 max-size-buffers=0"
 desc = (f'souphttpsrc location="{V}" user-agent="{UA}" ! {QBUF} ! '
-        f'decodebin ! queue max-size-buffers=16 ! gtkwaylandsink name=vsink qos=false')
+        f'parsebin ! v4l2slav1dec ! queue max-size-buffers=16 ! '
+        f'gtkwaylandsink name=vsink qos=false')
 if A:
     desc += (f'  souphttpsrc location="{A}" user-agent="{UA}" ! {QBUF} ! '
              f'decodebin ! audioconvert ! audioresample ! queue ! autoaudiosink')
@@ -101,6 +102,9 @@ class Player:
         bus.connect("message", self.on_msg)
 
         self.win.show_all()
+        # flush layout so the video widget gets a real size before playing
+        while Gtk.events_pending():
+            Gtk.main_iteration()
         pipeline.set_state(Gst.State.PLAYING)
         GLib.timeout_add(500, self.tick)
 
