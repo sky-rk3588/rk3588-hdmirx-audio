@@ -1,0 +1,191 @@
+#!/usr/bin/env python3
+# YT player sa borderom + kontrolama, HW dekod (V4L2, kao yt-gst).
+#   yt-player <youtube-url>          (Q=1440 yt-player <url> za nizu rez; default 2160)
+# Kontrole:
+#   dugmad:  ⏮-10s  ⏯play/pause  ⏹stop  +10s⏭  [seek slajder]  ⛶fullscreen
+#   tasteri: Space=play/pause  ←/→=±10s  ↑/↓=±60s  f/F11=fullscreen  q/Esc=izlaz
+import os, sys, subprocess
+# HW dekoderi MAX pre ucitavanja gst registra (isto kao yt-gst)
+os.environ['GST_PLUGIN_FEATURE_RANK'] = 'v4l2slav1dec:MAX,v4l2slh265dec:MAX,v4l2slh264dec:MAX'
+os.environ.setdefault('PAN_MESA_DEBUG', 'noafbc')
+import gi
+gi.require_version('Gst', '1.0'); gi.require_version('Gtk', '3.0')
+from gi.repository import Gst, Gtk, GLib, Gdk
+
+Gst.init(None)
+
+if len(sys.argv) < 2:
+    print("koristi: yt-player <youtube-url>"); sys.exit(1)
+URL = sys.argv[1]
+Q = os.environ.get('Q', '2160')
+UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+      "(KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36")
+YTDLP = os.path.expanduser('~/.local/bin/yt-dlp')
+
+print("yt-dlp uzima stream...")
+r = subprocess.run([YTDLP, '--extractor-args', 'youtube:player_client=android_vr,default',
+                    '-f', f'bv*[vcodec^=av01][height<=?{Q}]+ba/bv*[height<=?{Q}]+ba/b',
+                    '-g', URL], capture_output=True, text=True)
+urls = [u for u in r.stdout.strip().split('\n') if u.startswith('http')]
+if not urls:
+    print("yt-dlp nije dao stream (DRM/blokiran). Za takve: yt-chromium."); sys.exit(1)
+V = urls[0]; A = urls[1] if len(urls) > 1 else None
+
+QBUF = "queue2 use-buffering=true max-size-time=80000000000 max-size-bytes=0 max-size-buffers=0"
+desc = (f'souphttpsrc location="{V}" user-agent="{UA}" ! {QBUF} ! '
+        f'decodebin ! queue max-size-buffers=16 ! gtkwaylandsink name=vsink qos=false')
+if A:
+    desc += (f'  souphttpsrc location="{A}" user-agent="{UA}" ! {QBUF} ! '
+             f'decodebin ! audioconvert ! audioresample ! queue ! autoaudiosink')
+
+pipeline = Gst.parse_launch(desc)
+vsink = pipeline.get_by_name('vsink')
+video_widget = vsink.get_property('widget')   # GtkWidget za ugradnju
+
+
+def fmt(ns):
+    if ns is None or ns < 0:
+        return "0:00"
+    s = ns // Gst.SECOND
+    return f"{s // 60}:{s % 60:02d}"
+
+
+class Player:
+    def __init__(self):
+        self.fs = False
+        self.seeking = False
+        self.win = Gtk.Window(title="YT player")
+        self.win.set_default_size(1280, 760)
+        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.win.add(vbox)
+
+        video_widget.set_hexpand(True)
+        video_widget.set_vexpand(True)
+        vbox.pack_start(video_widget, True, True, 0)
+
+        self.bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        self.bar.set_margin_start(6); self.bar.set_margin_end(6)
+        self.bar.set_margin_top(3); self.bar.set_margin_bottom(3)
+        vbox.pack_start(self.bar, False, False, 0)
+
+        def add_btn(label, cb):
+            b = Gtk.Button(label=label)
+            b.connect("clicked", cb)
+            self.bar.pack_start(b, False, False, 0)
+            return b
+
+        add_btn("⏮ -10s", lambda w: self.seek(-10))
+        self.play_btn = add_btn("⏸", lambda w: self.toggle_play())
+        add_btn("⏹", lambda w: self.stop())
+        add_btn("+10s ⏭", lambda w: self.seek(10))
+
+        self.adj = Gtk.Adjustment(value=0, lower=0, upper=1000, step_increment=1)
+        self.scale = Gtk.Scale(orientation=Gtk.Orientation.HORIZONTAL, adjustment=self.adj)
+        self.scale.set_draw_value(False)
+        self.scale.set_hexpand(True)
+        self.scale.connect("button-press-event", lambda w, e: setattr(self, 'seeking', True))
+        self.scale.connect("button-release-event", self.on_slider_release)
+        self.bar.pack_start(self.scale, True, True, 0)
+
+        self.time_lbl = Gtk.Label(label="0:00 / 0:00")
+        self.bar.pack_start(self.time_lbl, False, False, 4)
+        add_btn("⛶ FS", lambda w: self.toggle_fs())
+
+        self.win.connect("key-press-event", self.on_key)
+        self.win.connect("destroy", lambda w: self.quit())
+        video_widget.connect("button-press-event", self.on_video_click)
+        video_widget.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+
+        bus = pipeline.get_bus()
+        bus.add_signal_watch()
+        bus.connect("message", self.on_msg)
+
+        self.win.show_all()
+        pipeline.set_state(Gst.State.PLAYING)
+        GLib.timeout_add(500, self.tick)
+
+    def toggle_play(self):
+        st = pipeline.get_state(0)[1]
+        if st == Gst.State.PLAYING:
+            pipeline.set_state(Gst.State.PAUSED); self.play_btn.set_label("⏵")
+        else:
+            pipeline.set_state(Gst.State.PLAYING); self.play_btn.set_label("⏸")
+
+    def stop(self):
+        pipeline.set_state(Gst.State.PAUSED)
+        pipeline.seek_simple(Gst.Format.TIME,
+                             Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT, 0)
+        self.play_btn.set_label("⏵")
+
+    def seek(self, secs):
+        ok, pos = pipeline.query_position(Gst.Format.TIME)
+        if not ok:
+            return
+        newpos = max(0, pos + secs * Gst.SECOND)
+        pipeline.seek_simple(Gst.Format.TIME,
+                             Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT, newpos)
+
+    def on_slider_release(self, w, e):
+        ok, dur = pipeline.query_duration(Gst.Format.TIME)
+        if ok and dur > 0:
+            newpos = int(self.adj.get_value() / 1000.0 * dur)
+            pipeline.seek_simple(Gst.Format.TIME,
+                                 Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT, newpos)
+        self.seeking = False
+
+    def toggle_fs(self):
+        self.fs = not self.fs
+        if self.fs:
+            self.win.fullscreen(); self.bar.hide()
+        else:
+            self.win.unfullscreen(); self.bar.show()
+
+    def on_video_click(self, w, e):
+        if e.type == Gdk.EventType._2BUTTON_PRESS:
+            self.toggle_fs()
+        return False
+
+    def on_key(self, w, e):
+        k = e.keyval
+        if k == Gdk.KEY_space:
+            self.toggle_play()
+        elif k == Gdk.KEY_Right:
+            self.seek(10)
+        elif k == Gdk.KEY_Left:
+            self.seek(-10)
+        elif k == Gdk.KEY_Up:
+            self.seek(60)
+        elif k == Gdk.KEY_Down:
+            self.seek(-60)
+        elif k in (Gdk.KEY_f, Gdk.KEY_F11):
+            self.toggle_fs()
+        elif k in (Gdk.KEY_q, Gdk.KEY_Escape):
+            self.quit()
+        return True
+
+    def tick(self):
+        if not self.seeking:
+            okp, pos = pipeline.query_position(Gst.Format.TIME)
+            okd, dur = pipeline.query_duration(Gst.Format.TIME)
+            if okp and okd and dur > 0:
+                self.adj.set_value(pos / dur * 1000)
+                self.time_lbl.set_text(f"{fmt(pos)} / {fmt(dur)}")
+        return True
+
+    def on_msg(self, bus, msg):
+        if msg.type == Gst.MessageType.EOS:
+            self.stop()
+        elif msg.type == Gst.MessageType.ERROR:
+            err, dbg = msg.parse_error()
+            print("GRESKA:", err.message)
+            if dbg:
+                print(dbg)
+            self.quit()
+
+    def quit(self):
+        pipeline.set_state(Gst.State.NULL)
+        Gtk.main_quit()
+
+
+Player()
+Gtk.main()
