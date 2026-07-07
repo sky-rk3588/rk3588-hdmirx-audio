@@ -1,6 +1,6 @@
-From b0bfed825564ec97440c20fdaf53f0b3ca289bb7 Mon Sep 17 00:00:00 2001
+From a318a126e9e4d6e1a10711c3ad86dd866b0db082 Mon Sep 17 00:00:00 2001
 From: sky <royalnet026@gmail.com>
-Date: Tue, 7 Jul 2026 22:49:44 +0200
+Date: Wed, 8 Jul 2026 01:16:46 +0200
 Subject: [PATCH 2/2] media: synopsys: hdmirx: add HDMI audio capture support
 
 The Synopsys DesignWare HDMI RX controller extracts the audio stream
@@ -15,14 +15,14 @@ reference clock locked to the source by nudging it in small ppm steps to
 hold the audio FIFO fill level near its target, which avoids FIFO
 under/overflow and the resulting dropped samples.
 
-Signed-off-by: sky <royalnet026@gmail.com>
+Signed-off-by: Igor-rk3588 <297247175+sky-rk3588@users.noreply.github.com>
 ---
- .../platform/synopsys/hdmirx/snps_hdmirx.c    | 236 ++++++++++++++++++
+ .../platform/synopsys/hdmirx/snps_hdmirx.c    | 244 ++++++++++++++++++
  .../platform/synopsys/hdmirx/snps_hdmirx.h    |   8 +
- 2 files changed, 244 insertions(+)
+ 2 files changed, 252 insertions(+)
 
 diff --git a/drivers/media/platform/synopsys/hdmirx/snps_hdmirx.c b/drivers/media/platform/synopsys/hdmirx/snps_hdmirx.c
-index 9cceffa..44eed36 100644
+index 9cceffa..f536d17 100644
 --- a/drivers/media/platform/synopsys/hdmirx/snps_hdmirx.c
 +++ b/drivers/media/platform/synopsys/hdmirx/snps_hdmirx.c
 @@ -41,6 +41,8 @@
@@ -34,7 +34,7 @@ index 9cceffa..44eed36 100644
  #include "snps_hdmirx.h"
  #include "snps_hdmirx_cec.h"
  
-@@ -132,6 +134,11 @@ struct snps_hdmirx_dev {
+@@ -132,6 +134,12 @@ struct snps_hdmirx_dev {
  	struct delayed_work delayed_work_hotplug;
  	struct delayed_work delayed_work_res_change;
  	struct hdmirx_cec *cec;
@@ -43,10 +43,11 @@ index 9cceffa..44eed36 100644
 +	u32 audio_clkrate;
 +	u32 audio_fs;
 +	int audio_pre_state;
++	bool audio_streaming;
  	struct mutex phy_rw_lock; /* to protect phy r/w configuration */
  	struct mutex stream_lock; /* to lock video stream capture */
  	struct mutex work_lock; /* to lock the critical section of hotplug event */
-@@ -2650,6 +2657,226 @@ static int hdmirx_register_cec(struct snps_hdmirx_dev *hdmirx_dev,
+@@ -2650,6 +2658,233 @@ static int hdmirx_register_cec(struct snps_hdmirx_dev *hdmirx_dev,
  	return 0;
  }
  
@@ -188,7 +189,12 @@ index 9cceffa..44eed36 100644
 +		delay = hdmirx_audio_clk_adjust(hdmirx_dev, total, single);
 +	hdmirx_dev->audio_pre_state = cur;
 +out:
-+	schedule_delayed_work(&hdmirx_dev->audio_work, msecs_to_jiffies(delay));
++	/* Only re-arm while streaming; avoids a self-reschedule race with
++	 * cancel_delayed_work_sync() in audio_shutdown().
++	 */
++	if (READ_ONCE(hdmirx_dev->audio_streaming))
++		schedule_delayed_work(&hdmirx_dev->audio_work,
++				      msecs_to_jiffies(delay));
 +}
 +
 +static int hdmirx_audio_hw_params(struct device *dev, void *data,
@@ -219,6 +225,7 @@ index 9cceffa..44eed36 100644
 +	hdmirx_update_bits(hdmirx_dev, GLOBAL_SWENABLE, AUDIO_ENABLE, AUDIO_ENABLE);
 +
 +	hdmirx_dev->audio_pre_state = 0;
++	WRITE_ONCE(hdmirx_dev->audio_streaming, true);
 +	mod_delayed_work(system_unbound_wq, &hdmirx_dev->audio_work,
 +			 msecs_to_jiffies(200));
 +
@@ -230,6 +237,7 @@ index 9cceffa..44eed36 100644
 +{
 +	struct snps_hdmirx_dev *hdmirx_dev = dev_get_drvdata(dev);
 +
++	WRITE_ONCE(hdmirx_dev->audio_streaming, false);
 +	cancel_delayed_work_sync(&hdmirx_dev->audio_work);
 +	hdmirx_update_bits(hdmirx_dev, GLOBAL_SWENABLE, AUDIO_ENABLE, 0);
 +}
@@ -273,7 +281,7 @@ index 9cceffa..44eed36 100644
  static int hdmirx_probe(struct platform_device *pdev)
  {
  	struct snps_hdmirx_dev *hdmirx_dev;
-@@ -2701,6 +2928,7 @@ static int hdmirx_probe(struct platform_device *pdev)
+@@ -2701,6 +2936,7 @@ static int hdmirx_probe(struct platform_device *pdev)
  			  hdmirx_delayed_work_hotplug);
  	INIT_DELAYED_WORK(&hdmirx_dev->delayed_work_res_change,
  			  hdmirx_delayed_work_res_change);
@@ -281,7 +289,7 @@ index 9cceffa..44eed36 100644
  
  	hdmirx_dev->cur_fmt_fourcc = V4L2_PIX_FMT_BGR24;
  	hdmirx_dev->timings = cea640x480;
-@@ -2769,6 +2997,10 @@ static int hdmirx_probe(struct platform_device *pdev)
+@@ -2769,6 +3005,10 @@ static int hdmirx_probe(struct platform_device *pdev)
  						       V4L2_DEBUGFS_IF_AVI, hdmirx_dev,
  						       hdmirx_debugfs_if_read);
  
@@ -292,7 +300,7 @@ index 9cceffa..44eed36 100644
  	return 0;
  
  err_unreg_video_dev:
-@@ -2788,6 +3020,10 @@ static void hdmirx_remove(struct platform_device *pdev)
+@@ -2788,6 +3028,10 @@ static void hdmirx_remove(struct platform_device *pdev)
  	struct device *dev = &pdev->dev;
  	struct snps_hdmirx_dev *hdmirx_dev = dev_get_drvdata(dev);
  

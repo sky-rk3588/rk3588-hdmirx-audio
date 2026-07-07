@@ -1,35 +1,28 @@
-From b0bfed825564ec97440c20fdaf53f0b3ca289bb7 Mon Sep 17 00:00:00 2001
-From: sky <royalnet026@gmail.com>
-Date: Tue, 7 Jul 2026 22:49:44 +0200
+From a318a126e9e4d6e1a10711c3ad86dd866b0db082 Mon Sep 17 00:00:00 2001
+From: Igor-rk3588 <297247175+sky-rk3588@users.noreply.github.com>
+Date: Wed, 8 Jul 2026 01:17:22 +0200
 Subject: [PATCH 0/2] media: synopsys: hdmirx: add HDMI RX audio capture
 
-This series adds audio capture support to the Synopsys DesignWare HDMI RX
-controller driver (RK3588). The mainline driver currently handles video
-only; the hardware also delivers the audio embedded in the incoming HDMI
-stream, which this series exposes as an ALSA capture device.
-
-The controller feeds the recovered audio to an on-SoC I2S controller. The
-driver registers the generic hdmi-codec as a child so a simple-audio-card
-in the device tree can bind the HDMI RX audio DAI
-(cpu = <&i2sN>, codec = <&hdmirx 0>).
-
-The audio sample rate is derived from the ACR N/CTS values and the
-measured TMDS character rate. A periodic worker keeps the local audio
-reference clock locked to the source by adjusting it in small ppm steps
-to hold the audio FIFO fill level near its target, avoiding FIFO
-under/overflow and dropped samples.
-
-Tested on an Orange Pi 5 Plus (RK3588) capturing 44.1/48 kHz stereo from
-a phone over HDMI; playback is clean with no dropped samples.
+Adds HDMI-input audio capture to the mainline synopsys-hdmirx driver
+(RK3588). Registers the generic hdmi-codec so a simple-audio-card binds
+the HDMI RX audio DAI; recovers fs from ACR N/CTS; a periodic worker
+locks the audio clock to the source to avoid FIFO drift. Tested on an
+Orange Pi 5 Plus.
 
 sky (2):
   dt-bindings: media: snps,dw-hdmi-rx: add #sound-dai-cells
   media: synopsys: hdmirx: add HDMI audio capture support
 
  .../bindings/media/snps,dw-hdmi-rx.yaml       |   7 +
- .../platform/synopsys/hdmirx/snps_hdmirx.c    | 236 ++++++++++++++++++
+ .../platform/synopsys/hdmirx/snps_hdmirx.c    | 244 ++++++++++++
  .../platform/synopsys/hdmirx/snps_hdmirx.h    |   8 +
- 3 files changed, 251 insertions(+)
+ patches/0000-cover-letter.patch               |  36 ++
+ ...a-snps-dw-hdmi-rx-add-sound-dai-cell.patch |  35 ++
+ ...dmirx-add-HDMI-audio-capture-support.patch | 348 ++++++++++++++++++
+ 6 files changed, 678 insertions(+)
+ create mode 100644 patches/0000-cover-letter.patch
+ create mode 100644 patches/0001-dt-bindings-media-snps-dw-hdmi-rx-add-sound-dai-cell.patch
+ create mode 100644 patches/0002-media-synopsys-hdmirx-add-HDMI-audio-capture-support.patch
 
 -- 
 2.53.0
