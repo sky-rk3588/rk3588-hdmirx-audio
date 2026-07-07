@@ -39,6 +39,7 @@ controller. The driver:
 | `scripts/hdmi-in` | Live HDMI IN **video** viewer (gstreamer, zero-copy) |
 | `scripts/hdmi-in-av` | Live HDMI IN **video + audio** |
 | `tools/patch_upstream.py` | Generates the driver/header changes on clean mainline source |
+| `dts/rk3588-hdmirx-audio-example.dtsi` | Example device-tree changes (enable I2S + `simple-audio-card`) |
 
 ## Build the module
 

@@ -1,0 +1,41 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Example device-tree changes to enable HDMI RX audio capture on RK3588.
+ *
+ * Add these to your board .dts (or an overlay). Together with the patched
+ * synopsys-hdmirx driver they create an ALSA capture card named
+ * "rockchip,hdmiin" that records the audio embedded in the HDMI input.
+ *
+ * Tested on Orange Pi 5 Plus. i2s7_8ch is the capture-only I2S wired to
+ * the HDMI RX on RK3588 (reg 0xfddf8000); adjust if your board differs.
+ */
+
+/* 1. Enable the capture-only I2S that the HDMI RX feeds audio into. */
+&i2s7_8ch {
+	status = "okay";
+};
+
+/* 2. Let a sound card reference the HDMI RX audio DAI as <&hdmirx_ctrler 0>. */
+&hdmirx_ctrler {
+	#sound-dai-cells = <1>;
+};
+
+/* 3. The ALSA capture card: I2S (CPU side) + HDMI RX (codec side). */
+/ {
+	hdmiin-sound {
+		compatible = "simple-audio-card";
+		simple-audio-card,name = "rockchip,hdmiin";
+		simple-audio-card,format = "i2s";
+		simple-audio-card,bitclock-master = <&hdmiin_codec>;
+		simple-audio-card,frame-master = <&hdmiin_codec>;
+		status = "okay";
+
+		simple-audio-card,cpu {
+			sound-dai = <&i2s7_8ch>;
+		};
+
+		hdmiin_codec: simple-audio-card,codec {
+			sound-dai = <&hdmirx_ctrler 0>;
+		};
+	};
+};
