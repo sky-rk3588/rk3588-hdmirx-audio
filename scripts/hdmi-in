@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# hdmi-in — OPi5+ HDMI IN capture (gstreamer, zero-copy dmabuf, glatko 60).
+# mpv/ffplay NE RADE: hdmirx je multiplanar V4L2, ffmpeg v4l2 demux samo singleplanar
+#   -> ioctl(VIDIOC_REQBUFS): Invalid argument. Zato iskljucivo gstreamer.
+#
+# Upotreba:
+#   hdmi-in         prozor sa dekoracijama (gtkwaylandsink): min/max/close + resize misem
+#   hdmi-in fs      fullscreen (waylandsink fullscreen=true)
+#   hdmi-in fps     prozor + FPS/dropped brojac u terminalu (fpsdisplaysink)
+#   hdmi-in info    ispis: rezolucija, rate, koder/format, bandwidth, kvantizacija, HDR
+#   hdmi-in edid4k     reklamiraj 2160p60+1440p+HDR EDID (reset na reboot!)
+#   hdmi-in edidreset  vrati original EDID (backup)
+set -euo pipefail
+DEV=/dev/video5
+
+lock_timings() {
+  v4l2-ctl -d "$DEV" --query-dv-timings        >/dev/null 2>&1 || true
+  v4l2-ctl -d "$DEV" --set-dv-bt-timings query >/dev/null 2>&1 || true
+}
+
+case "${1:-}" in
+  edid4k)
+    exec v4l2-ctl -d "$DEV" --set-edid=file="$HOME/edid4k60.txt"
+    ;;
+  edidreset)
+    exec v4l2-ctl -d "$DEV" --set-edid=file="$HOME/edid-hdmirx-backup.txt"
+    ;;
+  fs)
+    lock_timings
+    exec gst-launch-1.0 v4l2src device="$DEV" io-mode=dmabuf ! \
+      waylandsink sync=false fullscreen=true
+    ;;
+  fps)
+    lock_timings
+    exec gst-launch-1.0 v4l2src device="$DEV" io-mode=dmabuf ! \
+      fpsdisplaysink video-sink=gtkwaylandsink sync=false text-overlay=false
+    ;;
+  info)
+    lock_timings
+    fmt=$(v4l2-ctl -d "$DEV" --get-fmt-video)
+    tim=$(v4l2-ctl -d "$DEV" --query-dv-timings)
+    ctl=$(v4l2-ctl -d "$DEV" -L 2>/dev/null)
+    SZ=$(awk '/Size Image/{print $4}'                      <<<"$fmt")
+    PIX=$(awk -F"'" '/Pixel Format/{print $2}'             <<<"$fmt")
+    CS=$(awk -F': ' '/Colorspace/{print $2}'               <<<"$fmt")
+    TF=$(awk -F': ' '/Transfer Function/{print $2}'        <<<"$fmt")
+    W=$(awk '/Active width/{print $3}'                     <<<"$tim")
+    H=$(awk '/Active height/{print $3}'                    <<<"$tim")
+    PCLK=$(awk '/Pixelclock/{print $2}'                    <<<"$tim")
+    FPS=$(awk -F'[()]' '/Pixelclock/{print $2}'            <<<"$tim" | awk '{print $1}')
+    echo "== HDMI IN ($DEV) =="
+    echo "Rezolucija : ${W}x${H} progressive"
+    echo "Rate       : ${FPS} fps  (pixelclock ${PCLK} Hz)"
+    echo "Format     : ${PIX} (sirov, nekompresovan - NEMA kodera)"
+    echo "Colorspace : ${CS}   Transfer: ${TF}"
+    case "$CS" in
+      *2020*|*BT2020*) echo "HDR        : verovatno DA (BT.2020) - proveri Transfer=SMPTE 2084/HLG";;
+      *) echo "HDR        : NE (SDR)";;
+    esac
+    awk 'BEGIN{sz='"${SZ:-0}"'; f='"${FPS:-0}"'; p='"${PCLK:-0}"';
+         if(sz>0&&f>0) printf "Bandwidth  : sirovo %.0f MB/s (%.2f Gbit/s)\n", sz*f/1e6, sz*f*8/1e9;
+         if(p>0)       printf "             TMDS link %.2f Gbit/s (+8b/10b %.2f Gbit/s)\n", p*24/1e9, p*24*10/8/1e9;}'
+    echo "-- kvantizacija / content type --"
+    awk '/rgb_quantization_range|it_content_type/{print}' <<<"$ctl"
+    ;;
+  *)
+    lock_timings
+    exec gst-launch-1.0 v4l2src device="$DEV" io-mode=dmabuf ! \
+      gtkwaylandsink sync=false
+    ;;
+esac

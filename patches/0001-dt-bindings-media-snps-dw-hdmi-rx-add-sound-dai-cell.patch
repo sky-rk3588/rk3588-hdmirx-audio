@@ -1,0 +1,35 @@
+From 9266dcbf7075b5a0e4a81ddfcb8b1ed35203a208 Mon Sep 17 00:00:00 2001
+From: sky <royalnet026@gmail.com>
+Date: Tue, 7 Jul 2026 22:49:44 +0200
+Subject: [PATCH 1/2] dt-bindings: media: snps,dw-hdmi-rx: add #sound-dai-cells
+
+The HDMI RX controller can expose the audio embedded in the incoming
+HDMI stream as an ALSA capture device. Document the #sound-dai-cells
+property so that a sound card can reference the HDMI RX audio DAI.
+
+Signed-off-by: sky <royalnet026@gmail.com>
+---
+ .../devicetree/bindings/media/snps,dw-hdmi-rx.yaml         | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/Documentation/devicetree/bindings/media/snps,dw-hdmi-rx.yaml b/Documentation/devicetree/bindings/media/snps,dw-hdmi-rx.yaml
+index b7f6c87..83c10d9 100644
+--- a/Documentation/devicetree/bindings/media/snps,dw-hdmi-rx.yaml
++++ b/Documentation/devicetree/bindings/media/snps,dw-hdmi-rx.yaml
+@@ -78,6 +78,13 @@ properties:
+       The phandle of the syscon node for the Video Output GRF register
+       to enable EDID transfer through SDAIN and SCLIN.
+ 
++  "#sound-dai-cells":
++    const: 1
++    description:
++      The HDMI RX controller registers a generic HDMI audio codec so the
++      audio embedded in the incoming stream can be captured. A value of 1
++      lets a sound card reference the audio DAI as <&hdmirx 0>.
++
+ required:
+   - compatible
+   - reg
+-- 
+2.53.0
+
