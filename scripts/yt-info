@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Uzivo statistika za tekuci yt-player stream (kao hdmi-in info).
+# Pusti  yt-player <url>  pa u drugom terminalu:  yt-info
+INFO=/tmp/yt-player.info
+[ -f "$INFO" ] || { echo "yt-player nije pokrenut (nema $INFO). Pusti player pa probaj."; exit 1; }
+gv(){ grep -m1 "^$1=" "$INFO" | cut -d= -f2-; }
+PID=$(gv PID); VCODEC=$(gv VCODEC); HEIGHT=$(gv HEIGHT); FPS=$(gv FPS)
+VBR=$(gv VBR); ACODEC=$(gv ACODEC); ABR=$(gv ABR); TITLE=$(gv TITLE)
+kill -0 "${PID:-0}" 2>/dev/null || { echo "player nije aktivan (PID ${PID:-?})."; exit 1; }
+TICK=$(getconf CLK_TCK)
+IFACE=$(ip route 2>/dev/null | awk '/^default/{print $5; exit}')
+RX="/sys/class/net/$IFACE/statistics/rx_bytes"
+BW=$(( ${VBR:-0}+${ABR:-0} ))
+echo "════════ YT STREAM ════════"
+echo "Naslov : $TITLE"
+echo "Video  : $VCODEC   ${HEIGHT}p ${FPS}fps   ~${VBR} kbps"
+echo "Audio  : $ACODEC   ~${ABR} kbps"
+[ "$BW" -gt 0 ] && echo "Podaci : ~$(( BW/8 )) KB/s   (~$(( BW*60/8/1024 )) MB/min interneta)"
+echo "════════ UZIVO (Ctrl+C) ════════"
+while kill -0 "$PID" 2>/dev/null; do
+  read -r u1 s1 < <(awk '{print $14,$15}' /proc/$PID/stat 2>/dev/null)
+  rx1=$(cat "$RX" 2>/dev/null || echo 0)
+  sleep 2
+  read -r u2 s2 < <(awk '{print $14,$15}' /proc/$PID/stat 2>/dev/null)
+  rx2=$(cat "$RX" 2>/dev/null || echo 0)
+  cpu=$(awk -v d=$(( (u2+s2)-(u1+s1) )) -v t=$TICK 'BEGIN{printf "%.0f", d/t/2*100}')
+  rss=$(awk '/VmRSS/{print $2}' /proc/$PID/status 2>/dev/null)
+  net=$(( (rx2-rx1)/2/1024 ))
+  printf "CPU %4s%%   RAM %5s MB   NET %5s KB/s\n" "$cpu" "$(( ${rss:-0}/1024 ))" "$net"
+done
+echo "— player zatvoren —"

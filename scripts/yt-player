@@ -4,7 +4,7 @@
 # Kontrole:
 #   dugmad:  ⏮-10s  ⏯play/pause  ⏹stop  +10s⏭  [seek slajder]  ⛶fullscreen
 #   tasteri: Space=play/pause  ←/→=±10s  ↑/↓=±60s  f/F11=fullscreen  q/Esc=izlaz
-import os, sys, subprocess
+import os, sys, subprocess, json
 # HW dekoderi MAX pre ucitavanja gst registra (isto kao yt-gst)
 os.environ['GST_PLUGIN_FEATURE_RANK'] = 'v4l2slav1dec:MAX,v4l2slh265dec:MAX,v4l2slh264dec:MAX'
 os.environ.setdefault('PAN_MESA_DEBUG', 'noafbc')
@@ -25,11 +25,34 @@ YTDLP = os.path.expanduser('~/.local/bin/yt-dlp')
 print("yt-dlp uzima stream...")
 r = subprocess.run([YTDLP, '--extractor-args', 'youtube:player_client=android_vr,default',
                     '-f', f'bv*[vcodec^=av01][height<=?{Q}]+ba/bv*[height<=?{Q}]+ba/b',
-                    '-g', URL], capture_output=True, text=True)
-urls = [u for u in r.stdout.strip().split('\n') if u.startswith('http')]
-if not urls:
+                    '-j', URL], capture_output=True, text=True)
+try:
+    info = json.loads(r.stdout)
+except Exception:
     print("yt-dlp nije dao stream (DRM/blokiran). Za takve: yt-chromium."); sys.exit(1)
-V = urls[0]; A = urls[1] if len(urls) > 1 else None
+rf = info.get('requested_formats')
+if rf:
+    vfmt = next((f for f in rf if f.get('vcodec', 'none') not in (None, 'none')), rf[0])
+    afmt = next((f for f in rf if f.get('acodec', 'none') not in (None, 'none')), None)
+else:
+    vfmt, afmt = info, None
+V = vfmt.get('url'); A = afmt.get('url') if afmt else None
+if not V:
+    print("nema video stream URL."); sys.exit(1)
+
+# zapisi info o streamu za `yt-info` komandu
+try:
+    with open('/tmp/yt-player.info', 'w') as f:
+        f.write(f"PID={os.getpid()}\n")
+        f.write(f"VCODEC={vfmt.get('vcodec', '?')}\n")
+        f.write(f"HEIGHT={vfmt.get('height', '?')}\n")
+        f.write(f"FPS={round(vfmt.get('fps') or 0)}\n")
+        f.write(f"VBR={round(vfmt.get('tbr') or vfmt.get('vbr') or 0)}\n")
+        f.write(f"ACODEC={(afmt or {}).get('acodec', '?')}\n")
+        f.write(f"ABR={round((afmt or {}).get('abr') or 0)}\n")
+        f.write(f"TITLE={(info.get('title') or '')[:60]}\n")
+except Exception:
+    pass
 
 QBUF = "queue2 use-buffering=true max-size-time=80000000000 max-size-bytes=0 max-size-buffers=0"
 desc = (f'souphttpsrc location="{V}" user-agent="{UA}" ! {QBUF} ! '
