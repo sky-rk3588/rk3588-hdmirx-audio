@@ -18,13 +18,25 @@ if len(sys.argv) < 2:
     print("koristi: yt-player <youtube-url>"); sys.exit(1)
 URL = sys.argv[1]
 Q = os.environ.get('Q', '2160')
+# izbor kodera:  DEC=av1|vp9|h264|h265  (default av1)
+DEC = os.environ.get('DEC', 'av1').lower()
+DECMAP = {
+    'av1':  ('av01', 'v4l2slav1dec'),
+    'vp9':  ('vp9',  'v4l2slvp9dec'),
+    'h264': ('avc1', 'v4l2slh264dec'),
+    'avc':  ('avc1', 'v4l2slh264dec'),
+    'h265': ('hev', 'v4l2slh265dec'),
+    'hevc': ('hev', 'v4l2slh265dec'),
+}
+VFILTER, VDEC = DECMAP.get(DEC, DECMAP['av1'])
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36")
 YTDLP = os.path.expanduser('~/.local/bin/yt-dlp')
 
 print("yt-dlp uzima stream...")
 r = subprocess.run([YTDLP, '--extractor-args', 'youtube:player_client=android_vr,default',
-                    '-f', f'bv*[vcodec^=av01][height<=?{Q}]+ba/bv*[height<=?{Q}]+ba/b',
+                    '-f', f'bv*[vcodec^={VFILTER}][height<=?{Q}]+ba/'
+                          f'bv*[height<=?{Q}]+ba/b',
                     '-j', URL], capture_output=True, text=True)
 try:
     info = json.loads(r.stdout)
@@ -56,7 +68,7 @@ except Exception:
 
 QBUF = "queue2 use-buffering=true max-size-time=80000000000 max-size-bytes=0 max-size-buffers=0"
 desc = (f'souphttpsrc location="{V}" user-agent="{UA}" ! {QBUF} ! '
-        f'parsebin ! v4l2slav1dec ! queue max-size-buffers=16 ! '
+        f'parsebin ! {VDEC} ! queue max-size-buffers=16 ! '
         f'gtkwaylandsink name=vsink qos=false')
 if A:
     desc += (f'  souphttpsrc location="{A}" user-agent="{UA}" ! {QBUF} ! '
