@@ -40,7 +40,10 @@ controller. The driver:
 |------|------|
 | `patches/` | Upstream-style patch series (dt-binding + driver), `checkpatch` clean |
 | `scripts/hdmi-in` | Live HDMI IN **video** viewer (gstreamer, zero-copy) |
-| `scripts/hdmi-in-av` | Live HDMI IN **video + audio** |
+| `scripts/hdmi-in-av` | Live HDMI IN **video + audio** (audio output selectable: analog / HDMI0 / HDMI1) |
+| `scripts/yt-player` | GTK YouTube player with **hardware decode** (AV1/VP9/H264/H265 via V4L2), seek/pause/fullscreen |
+| `scripts/yt-info` | Live playback stats (codec, resolution, bitrate, CPU/RAM/network) — companion to yt-player |
+| `scripts/yt-gst` | Minimal gst-launch YouTube pipeline (AV1 HW, no controls) |
 | `tools/patch_upstream.py` | Generates the driver/header changes on clean mainline source |
 | `dts/rk3588-hdmirx-audio-example.dtsi` | Example device-tree changes (enable I2S + `simple-audio-card`) |
 
@@ -60,8 +63,21 @@ bits (enable the capture-only I2S + a `simple-audio-card`), and reboot.
 
 ```sh
 hdmi-in                 # video only
-hdmi-in-av              # video + audio
+hdmi-in-av              # video + audio -> headphones / analog 3.5mm
+hdmi-in-av mon          # video + audio -> monitor (HDMI0)
+hdmi-in-av mon1         # video + audio -> second HDMI output (HDMI1)
 arecord -D hw:CARD=rockchiphdmiin -f S16_LE -r 48000 -c 2 out.wav
+```
+
+YouTube player with hardware decode (codec picked via `DEC` env — handy for
+testing each V4L2 decoder):
+
+```sh
+yt-player <url>              # AV1  (default, /dev/video6)
+DEC=vp9  yt-player <url>     # VP9  (rkvdec)
+DEC=h264 yt-player <url>     # H.264
+DEC=h265 yt-player <url>     # H.265/HEVC
+yt-info                      # live codec/CPU/RAM/network stats while it plays
 ```
 
 ## Upstream
