@@ -12,6 +12,10 @@ ALSA capture device and can be recorded or played live alongside the video.
 > **Full write-up:** [docs/hdmi-in-complete-guide.md](docs/hdmi-in-complete-guide.md)
 > — the complete HDMI IN story (video + audio), build, deploy, and gotchas.
 
+> **Novo (srpski):** [docs/kako-poslati-kernel-patch.md](docs/kako-poslati-kernel-patch.md)
+> — kako poslati patch u Linux kernel, vodič običnog čoveka: git send-email +
+> Gmail, checkpatch, get_maintainer, odgovaranje na review, i sve zamke.
+
 ## What works
 
 - HDMI IN video (1080p60, up to 4K per the RX)
